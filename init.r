@@ -1,5 +1,6 @@
+clearall = T
+if (clearall) rm(list = ls(all.names = TRUE))
 echo = T
-
 #
 # 	Prepare incidence data
 #
@@ -21,6 +22,9 @@ wa[is.na(wa$Cases),]$Cases <- numeric(dim(wa[is.na(wa$Cases),])[1])
 # Order file by time
 wa <- wa[order(wa$Time),]
 
+# Districts naming convenvtion
+wa$Location <- unlist(lapply(as.character(wa$Location), camelCase))
+
 # Prepare smaller datasets specifically for GU, LI, SL
 gu <- wa[wa$Country == 'Guinea',c('Country', 'Location', 'Cases', 'Time')]
 li <- wa[wa$Country == 'Liberia',c('Country', 'Location', 'Cases', 'Time')]
@@ -29,9 +33,13 @@ sl <- wa[wa$Country == 'Sierra Leone',c('Country', 'Location', 'Cases', 'Time')]
 #
 # 	Prepare districts/regions data
 #
+sl.name <- 'Sierra Leone'
+# short name is needed for googleAPI (should be fixed by proper URLencode-this works for now)
+sl.name.short <- 'SierraLeone'
 
 # Sierra Leone districts information (Area, Population)
 sl.distr.inf <- read.csv('../data/sl.distr.inf.csv')
+sl.distr.inf <- sl.distr.inf[sl.distr.inf$Country == sl.name,]
 # Sierra Leone districts adjacency matrix
 sl.distr.adj <- read.csv('../data/sl.distr.adj.csv',header = T)
 row.names(sl.distr.adj) <- colnames(sl.distr.adj)
@@ -42,10 +50,6 @@ row.names(sl.distr.adj) <- colnames(sl.distr.adj)
 
 # create edgelist from adjacency matrix
 sl.distr.el <- which(sl.distr.adj == 1, arr.ind = T,useNames = F)
-
-sl.name <- 'Sierra Leone'
-# short name is needed for googleAPI (should be fixed by proper URLencode-this works for now)
-sl.name.short <- 'SierraLeone'
 
 # create matrix of interdistrict distances
 # distances of two districts is approx. by proxies (distr. capitols)
@@ -87,15 +91,15 @@ diag(sl.distr.dist) <- sqrt(sl.distr.inf[sl.distr.inf$Country == sl.name,'Area']
 
 # Create N1, N2 matrices - to be used in construction of connectivity matrix
 n = length(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population)
-pop.tot <- sum(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population)
+sl.pop.tot <- sum(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population)
 r.ave <- sqrt(sum(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Area)/pi)
-N1 <- matrix(rep(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population,n), ncol = n)
-N2 <- matrix(rep(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population,n), ncol = n, byrow = T)
-N1 <- N1 / pop.tot
-N2 <- N2 / pop.tot
+sl.N1 <- matrix(rep(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population,n), ncol = n)
+sl.N2 <- matrix(rep(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population,n), ncol = n, byrow = T)
+sl.N1 <- sl.N1 / sl.pop.tot
+sl.N2 <- sl.N2 / sl.pop.tot
 
 # function for constructing connectivity matrix for certain tau1, tau2, ro
-create.Cm <- function(tau1, tau2, ro){
+create.sl.Cm <- function(tau1, tau2, ro){
 	Cm <- N1^tau1 * N2^tau2 / sl.dist^ro
 	Cm[is.infinite(Cm)] <- 0
 	Cm <- t(Cm %*% diag(1 / rowSums(Cm)))

@@ -1,4 +1,7 @@
+init = T
 
+library('abind')
+library('truncnorm')
 # load & prepare data
-source('prepareData.r')
+if (init) source('init.r')
 
