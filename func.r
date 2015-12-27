@@ -75,12 +75,20 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	xprior[4*ndist+5,] <- matrix(runif(nens, 
 						   min = 2, max = 8), ncol = nens)
 	
+	# Create connectivity matrices
+	Cn <- create.sl.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
+			   xprior[4*ndist+3,],
+			   xprior[4*ndist+4,],
+			   xprior[4*ndist+5,]) # last 3 are tau1, tau2, ro
 	View(xprior)
 	# Part 2. - Train filter
 	for (i in trn.range){
-		# propagate SEIR - NSDE method goes here
+		# propagate SEIR - NSDE method
+			#xpost[,j] <- rk4(t1 = i,t2 = i+1, dt = 1/7,xprior.n = xprior, Cn = Cn)
+		xpost <- apply(xpost,MARGIN = 2, rk4, 
+			       	t1 = i, t2 = i+1, dt = 1/7, Cn = Cn)
 		# update filter
-		var.obs <- apply(xpost,1,var)	# here goes inflation OEV
+		var.obs <- apply(xpost,1,var)	# here will go inflation OEV
 		var.prior <- apply(xprior,1,var)
 		xprior.mean <- apply(xprior,1,mean)
 		z <- c(numeric(2*ndist),distr.tseries[,i],numeric(nvar-3*ndist))	# new incidence data
@@ -92,17 +100,55 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 		# eq. (4.5):
 		xpost <- (xpost.mean + sqrt(var.obs/den)) %*% t(rep(1,nens))*
 				(xprior-xprior.mean %*% t(rep(1,nens)))		# matrix (nvar, nens)
+		
+		xprior <- xpost
+
+		# update Cn matrix
+		Cn <- create.sl.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
+				   xprior[4*ndist+3,],
+				   xprior[4*ndist+4,],
+				   xprior[4*ndist+5,]) # last 3 are tau1, tau2, ro
 	}
 }
 
 
-rk4 <- function(t1, t2, dt, S, E, I, param, N1, N2, distr.dist){
-	# propagate for one ensemble
+rk4 <- function(t1, t2, dt, xprior.n, Cn){
+	nvar <- length(xprior.n)
+	ndist <- dim(Cn)[1]
+	SEI <- xprior.n[1:3*ndist]
+	Z <- xprior.n[nvar-4]
+	D <- xprior.n[nvar-3]
+	beta <- xprior.n[1:ndist+3*ndist]/D
+	N.hat <- Cn %*% sl.N1[,1]
 	
+	# propagate for one ensemble
+	xpost.n <- xprior.n
 	t.vec <- seq(t1, t2, by=dt)
 	for (t in t.vec){
-		
+		k1s <- SEIRfunc(SEI, N.hat, beta, alpha, Z, D, Cn)
+		k2s <- SEIRfunc(SEI + 0.5*dt*k1s, N.hat, beta, alpha, Z, D, Cn)
+		k3s <- SEIRfunc(SEI + 0.5*dt*k2s, N.hat, beta, alpha, Z, D, Cn)
+		k4s <- SEIRfunc(SEI +   1*dt*k3s, N.hat, beta, alpha, Z, D, Cn)
+		SEI <- SEI + dt*(k1s + 2*k2s + 2*k3s + k4s)/6
 	}
+	
+	xpost.n[1:3*ndist] <- SEI
+	return(xpost.n)
+}
+
+SEIRfunc <- function(SEI, N.hat, beta, alpha,  Z, D, Cn){
+	ndist <- length(SEI)/3
+	S <- SEI[1:ndist] 
+	E <- SEI[1:ndist+ndist] 
+	I <- SEI[1:ndist+2*ndist] 
+	
+	result <- numeric(3*ndist)
+	h1 <- S*sum(t(Cn) %*% beta*I/N.hat)		# I.hat := I
+	h2 <- E/Z
+	result[1:ndist] <- -h1 - alpha			# S
+	result[1:ndist+ndist] <- h1 - h2 + alpha	# E
+	result[1:ndist+2*ndist] <- h2 - I/D	# I
+	return(result)
 }
 
 camelCase <- function(x) {

@@ -115,7 +115,7 @@ sl.N2 <- sl.N2 / sl.pop.tot
 create.sl.Cm <- function(N1, N2, distr.dist, tau1, tau2, ro){
 	Cm <- N1^tau1 * N2^tau2 / distr.dist^ro
 	Cm[is.infinite(Cm)] <- 0
-	Cm <- t(Cm %*% diag(1 / rowSums(Cm)))
+	Cm <- Cm %*% diag(1 / rowSums(Cm))
 	return(Cm)
 }
 
