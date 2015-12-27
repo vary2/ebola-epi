@@ -1,5 +1,5 @@
 
-EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 1){
+EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 24){
 	# Ensemble adjustment Kalman filter
 	# Parts of code:
 	#	1. -> initialize starting ensemble members
@@ -16,6 +16,7 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	#	nfor -> number of forecast steps (after training period)
 	#	tseries -> weekly incidence data (cols are different districts)
 	#	N1, N2, distr.dist -> matrices for connectivity matrix
+	#	trn.init -> initial week (24th obs. is where all districts had ebola)
 	
 	# check viability of inputs:
 	if (!all( dim(distr.dist) == dim(N1) & dim(N1) == dim(N2)))
@@ -23,18 +24,20 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	if (dim(distr.dist)[1] != dim(distr.tseries)[1])
 		warning('Wrong tseries dimension.')
 	if (ntrn > dim(distr.tseries)[2])
-		warning('More training data required then available.')
+		warning('More training data required then observations available.')
 	
 	# init variables
-	nobs <- dim(distr.tseries)[2]		# number of observations
-	ndist <- dim(distr.dist)[2]	# number of districs
+	nobs <- dim(distr.tseries)[2]	# number of observations
+	ndist <- dim(distr.tseries)[1]	# number of districs
 	nvar <- 4*ndist + 5		# number of variables
 					# for district: S,E,I,R (not recovered)
 					#	global: Z, D, tau1, tau2, ro
-	obs.mean <- 3
-	obs.sd <- 2
 	
-	
+	trn.range <- 1:ntrn+trn.init-1	# training range for tseries
+	for.range <- 1:nfor + ntrn	# forecast range 
+	obs.mean <- apply(distr.tseries[,trn.range],1,mean)	# mean of whole trn.range
+	obs.sd   <- apply(distr.tseries[,trn.range],1,sd)	# std. dev. of whole trn.range (for init. draw)
+
 	# Part 1. - INIT
 	# In the original paper this was done by sampling from latin hypercube
 	# Here it will be done less sophisticated first
@@ -60,24 +63,24 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	xprior[1:ndist+3*ndist,] <- matrix(runif(nens*ndist, 
 						min = 0.5, max = 3.5), ncol = nens)
 	# Z
-	xprior[1:ndist+3*ndist+1,] <- matrix(runif(nens, 
+	xprior[4*ndist+1,] <- matrix(runif(nens, 
 						min = 2, max = 14), ncol = nens)
 	# D
-	xprior[1:ndist+3*ndist+2,] <- matrix(runif(nens,
+	xprior[4*ndist+2,] <- matrix(runif(nens,
 						min = 5, max = 14), ncol = nens)
 	# tau1, tau2
-	xprior[1:ndist+3*ndist+3,] <- matrix(runif(nens*2, 
+	xprior[1:2+4*ndist+2,] <- matrix(runif(nens*2, 
 						min = 0.3, max = 0.7), ncol = nens)
 	# ro
-	xprior[1:ndist+3*ndist+4,] <- matrix(runif(nens, 
+	xprior[4*ndist+5,] <- matrix(runif(nens, 
 						   min = 2, max = 8), ncol = nens)
 	
 	View(xprior)
 	# Part 2. - Train filter
-	for (i in 1:ntrn+trn.init-1){
-		# propagate SEIR - NSDE method here
+	for (i in trn.range){
+		# propagate SEIR - NSDE method goes here
 		# update filter
-		var.obs <- apply(xpost,1,var)	# here goes inflation
+		var.obs <- apply(xpost,1,var)	# here goes inflation OEV
 		var.prior <- apply(xprior,1,var)
 		xprior.mean <- apply(xprior,1,mean)
 		z <- distr.tseries[i,]	# new incidence data
