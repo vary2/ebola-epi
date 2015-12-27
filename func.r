@@ -37,8 +37,11 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	for.range <- 1:nfor + ntrn	# forecast range 
 	obs.mean <- apply(distr.tseries[,trn.range],1,mean)	# mean of whole trn.range
 	obs.sd   <- apply(distr.tseries[,trn.range],1,sd)	# std. dev. of whole trn.range (for init. draw)
-
+	
+	#
 	# Part 1. - INIT
+	#
+	
 	# In the original paper this was done by sampling from latin hypercube
 	# Here it will be done less sophisticated first
 	
@@ -75,24 +78,30 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	xprior[4*ndist+5,] <- matrix(runif(nens, 
 						   min = 2, max = 8), ncol = nens)
 	
-	# Create connectivity matrices
-	Cn <- create.sl.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
-			   xprior[4*ndist+3,],
-			   xprior[4*ndist+4,],
-			   xprior[4*ndist+5,]) # last 3 are tau1, tau2, ro
-	View(xprior)
+	# Create initial connectivity matrices
+	Cns <- array(0,c(ndist,ndist,nens))
+	for (j in 1:nens){
+		Cns[,,j] <- create.sl.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
+					   xprior[4*ndist+3, j],
+					   xprior[4*ndist+4, j],
+					   xprior[4*ndist+5, j])	# last 3 are tau1, tau2, ro
+	}
+	
+	#
 	# Part 2. - Train filter
+	#
+	
 	for (i in trn.range){
-		# propagate SEIR - NSDE method
-			#xpost[,j] <- rk4(t1 = i,t2 = i+1, dt = 1/7,xprior.n = xprior, Cn = Cn)
-		xpost <- apply(xpost,MARGIN = 2, rk4, 
-			       	t1 = i, t2 = i+1, dt = 1/7, Cn = Cn)
+		# propagate SEIR using NSDE method (for each ensemble)
+		for (j in 1:nens){
+			xpost[,j] <- rk4(t1 = i,t2 = i+1, dt = 1/7,xprior.n = xprior[,j], Cn = Cns[,,j])
+		}
 		# update filter
 		var.obs <- apply(xpost,1,var)	# here will go inflation OEV
 		var.prior <- apply(xprior,1,var)
 		xprior.mean <- apply(xprior,1,mean)
 		z <- c(numeric(2*ndist),distr.tseries[,i],numeric(nvar-3*ndist))	# new incidence data
-											# Note: we observer only new I
+											# Note: we observe only new I
 		
 		den <- var.obs + var.prior
 		# eq. (4.4):
@@ -103,14 +112,19 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 		
 		xprior <- xpost
 
-		# update Cn matrix
-		Cn <- create.sl.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
-				   xprior[4*ndist+3,],
-				   xprior[4*ndist+4,],
-				   xprior[4*ndist+5,]) # last 3 are tau1, tau2, ro
+		# update Cns array
+		for (j in 1:nens){
+			Cns[,,j] <- create.sl.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
+						 xprior[4*ndist+3, j],
+						 xprior[4*ndist+4, j],
+						 xprior[4*ndist+5, j])	# last 3 are tau1, tau2, ro
+		}
 	}
+	
+	#
+	# Part 3. - Forecast
+	#
 }
-
 
 rk4 <- function(t1, t2, dt, xprior.n, Cn){
 	nvar <- length(xprior.n)
