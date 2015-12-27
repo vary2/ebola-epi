@@ -26,9 +26,12 @@ wa <- wa[order(wa$Time),]
 wa$Location <- unlist(lapply(as.character(wa$Location), camelCase))
 
 # Prepare smaller datasets specifically for GU, LI, SL
-gu <- wa[wa$Country == 'Guinea',c('Country', 'Location', 'Cases', 'Time')]
-li <- wa[wa$Country == 'Liberia',c('Country', 'Location', 'Cases', 'Time')]
-sl <- wa[wa$Country == 'Sierra Leone',c('Country', 'Location', 'Cases', 'Time')]
+wa <- wa[,c('Country', 'Location', 'Cases', 'Time')]
+nweeks <- sum(wa$Location == 'Bo')
+
+gu <- wa[wa$Country == 'Guinea',]
+li <- wa[wa$Country == 'Liberia',]
+sl <- wa[wa$Country == 'Sierra Leone',]
 
 #
 # 	Prepare districts/regions data
@@ -40,13 +43,23 @@ sl.name.short <- 'SierraLeone'
 # Sierra Leone districts information (Area, Population)
 sl.distr.inf <- read.csv('../data/sl.distr.inf.csv')
 sl.distr.inf <- sl.distr.inf[sl.distr.inf$Country == sl.name,]
-# Sierra Leone districts adjacency matrix
-sl.distr.adj <- read.csv('../data/sl.distr.adj.csv',header = T)
-row.names(sl.distr.adj) <- colnames(sl.distr.adj)
+sl.distr.n <- dim(sl.distr.inf)[1]
+
+# Create distric tseries data
+sl.distr.tseries <- array(0,ncol = nweeks, nrow = sl.distr.n)
+i = 1
+for (distr in sl.distr.inf$District){
+	sl.distr.tseries[i,] <- sl[sl$Location == distr,]$Cases
+	i = i + 1
+}
 
 #
 #	Create connectivity matrix
 #
+
+# Sierra Leone districts adjacency matrix
+sl.distr.adj <- read.csv('../data/sl.distr.adj.csv',header = T)
+row.names(sl.distr.adj) <- colnames(sl.distr.adj)
 
 # create edgelist from adjacency matrix
 sl.distr.el <- which(sl.distr.adj == 1, arr.ind = T,useNames = F)

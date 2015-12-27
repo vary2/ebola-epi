@@ -1,14 +1,14 @@
 
-EAKF <- function(tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 1){
+EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 1){
 	# Ensemble adjustment Kalman filter
 	# Parts of code:
 	#	1. -> initialize starting ensemble members
 	#	2. -> train Kalman filter on first ntrn incidence data
 	#	3. -> forecast using trained Kalman filter
 	#
-	# Subroutine (method for SEIR prediction step):
+	# ODE subroutine (method for SEIR prediction step):
 	#	-> Runge-Kutta 4th order
-	# 	-> something else
+	# 	-> something else?
 	
 	# Inputs :
 	#	ntrn -> number of training steps
@@ -20,13 +20,13 @@ EAKF <- function(tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 1){
 	# check viability of inputs:
 	if (!all( dim(distr.dist) == dim(N1) & dim(N1) == dim(N2)))
 		warning('Wrong N1, N2, distr.dist dimensions.')
-	if (dim(distr.dist)[2] != dim(tseries)[2])
+	if (dim(distr.dist)[1] != dim(distr.tseries)[1])
 		warning('Wrong tseries dimension.')
-	if (ntrn > dim(tseries)[1])
+	if (ntrn > dim(distr.tseries)[2])
 		warning('More training data required then available.')
 	
 	# init variables
-	nobs <- dim(tseries)[1]		# number of observations
+	nobs <- dim(distr.tseries)[2]		# number of observations
 	ndist <- dim(distr.dist)[2]	# number of districs
 	nvar <- 4*ndist + 5		# number of variables
 					# for district: S,E,I,R (not recovered)
@@ -36,7 +36,7 @@ EAKF <- function(tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 1){
 	
 	
 	# Part 1. - INIT
-	# In original paper this was done by sampling from latin hypercube
+	# In the original paper this was done by sampling from latin hypercube
 	# Here it will be done less sophisticated first
 	
 	# variables are orderes as Ss, Es, Is, Rs, global variables are last
@@ -72,13 +72,33 @@ EAKF <- function(tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 1){
 	xprior[1:ndist+3*ndist+4,] <- matrix(runif(nens, 
 						   min = 2, max = 8), ncol = nens)
 	
+	View(xprior)
 	# Part 2. - Train filter
 	for (i in 1:ntrn+trn.init-1){
-		# propagate SEIR
-		# update filter 
+		# propagate SEIR - NSDE method here
+		# update filter
+		var.obs <- apply(xpost,1,var)	# here goes inflation
+		var.prior <- apply(xprior,1,var)
+		xprior.mean <- apply(xprior,1,mean)
+		z <- distr.tseries[i,]	# new incidence data
+		
+		den <- var.obs + var.prior
+		# eq. (4.4):
+		xpost.mean <- (var.obs*xprior.mean + var.prior*z)/den
+		# eq. (4.5):
+		xpost <- xpost.mean + sqrt(var.obs/den)*(xprior-xprior.mean)
 	}
 }
 
+
+rk4 <- function(t1, t2, dt, S, E, I, param, N1, N2, distr.dist){
+	# propagate for one ensemble
+	
+	t.vec <- seq(t1, t2, by=dt)
+	for (t in t.vec){
+		
+	}
+}
 
 camelCase <- function(x) {
 	# "I like pizza" to "I Like Pizza"
