@@ -83,13 +83,15 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 		var.obs <- apply(xpost,1,var)	# here goes inflation OEV
 		var.prior <- apply(xprior,1,var)
 		xprior.mean <- apply(xprior,1,mean)
-		z <- distr.tseries[i,]	# new incidence data
+		z <- c(numeric(2*ndist),distr.tseries[,i],numeric(nvar-3*ndist))	# new incidence data
+											# Note: we observer only new I
 		
 		den <- var.obs + var.prior
 		# eq. (4.4):
-		xpost.mean <- (var.obs*xprior.mean + var.prior*z)/den
+		xpost.mean <- (var.obs*xprior.mean + var.prior*z)/den		# vector (nvar,1)
 		# eq. (4.5):
-		xpost <- xpost.mean + sqrt(var.obs/den)*(xprior-xprior.mean)
+		xpost <- (xpost.mean + sqrt(var.obs/den)) %*% t(rep(1,nens))*
+				(xprior-xprior.mean %*% t(rep(1,nens)))		# matrix (nvar, nens)
 	}
 }
 

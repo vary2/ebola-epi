@@ -112,8 +112,8 @@ sl.N1 <- sl.N1 / sl.pop.tot
 sl.N2 <- sl.N2 / sl.pop.tot
 
 # function for constructing connectivity matrix for certain tau1, tau2, ro
-create.sl.Cm <- function(tau1, tau2, ro){
-	Cm <- N1^tau1 * N2^tau2 / sl.dist^ro
+create.sl.Cm <- function(N1, N2, distr.dist, tau1, tau2, ro){
+	Cm <- N1^tau1 * N2^tau2 / distr.dist^ro
 	Cm[is.infinite(Cm)] <- 0
 	Cm <- t(Cm %*% diag(1 / rowSums(Cm)))
 	return(Cm)
