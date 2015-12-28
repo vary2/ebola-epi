@@ -1,5 +1,5 @@
 
-EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 24){
+EAKF <- function(distr.tseries, N, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 24){
 	# Ensemble adjustment Kalman filter
 	# Parts of code:
 	#	1. -> initialize starting ensemble members
@@ -33,8 +33,8 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 					# for district: S,E,I,R (not recovered)
 					#	global: Z, D, tau1, tau2, ro
 	
-	trn.range <- 1:ntrn+trn.init-1	# training range for tseries
-	for.range <- 1:nfor + ntrn	# forecast range 
+	trn.range <- 1:ntrn+trn.init-1		# training range for tseries
+	for.range <- 1:nfor+ntrn+trn.init-1	# forecast range 
 	obs.mean <- apply(distr.tseries[,trn.range],1,mean)	# mean of whole trn.range
 	obs.sd   <- apply(distr.tseries[,trn.range],1,sd)	# std. dev. of whole trn.range (for init. draw)
 	
@@ -48,6 +48,7 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	# variables are orderes as Ss, Es, Is, Rs, global variables are last
 	xprior <- array(0,c(nvar,nens))
 	xpost  <- array(0,c(nvar,nens))
+	xobs  <- array(0,c(nvar,nens))
 	
 	# this is to be done for forecasts
 	# fcast=array(0,c(3,nens,nfor));	# S, E, I
@@ -55,7 +56,7 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	# generate random intial draw
 	# S0:
 	xprior[1:ndist,] <- matrix(runif(nens*ndist, 
-					 	min = 0.4*N1[,1], max = N1[,1]), ncol = nens)
+					 	min = 0.4*N, max = N), ncol = nens)
 	# E0
 	xprior[1:ndist+ndist,] <- matrix(rtruncnorm(nens*ndist, 
 						a=0, b=Inf, mean = obs.mean, sd = 2*obs.sd), ncol = nens)
@@ -72,16 +73,16 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	xprior[4*ndist+2,] <- matrix(runif(nens,
 						min = 5, max = 14), ncol = nens)
 	# tau1, tau2
-	xprior[1:2+4*ndist+2,] <- matrix(runif(nens*2, 
+	xprior[4*ndist+3:4,] <- matrix(runif(nens*2, 
 						min = 0.3, max = 0.7), ncol = nens)
 	# ro
 	xprior[4*ndist+5,] <- matrix(runif(nens, 
 						   min = 2, max = 8), ncol = nens)
-	
+
 	# Create initial connectivity matrices
 	Cns <- array(0,c(ndist,ndist,nens))
 	for (j in 1:nens){
-		Cns[,,j] <- create.sl.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
+		Cns[,,j] <- create.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
 					   xprior[4*ndist+3, j],
 					   xprior[4*ndist+4, j],
 					   xprior[4*ndist+5, j])	# last 3 are tau1, tau2, ro
@@ -91,13 +92,15 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 	# Part 2. - Train filter
 	#
 	
+	print('Training:')
 	for (i in trn.range){
+		print(i)
 		# propagate SEIR using NSDE method (for each ensemble)
 		for (j in 1:nens){
-			xpost[,j] <- rk4(t1 = i,t2 = i+1, dt = 1/7,xprior.n = xprior[,j], Cn = Cns[,,j])
+			xobs[,j] <- rk4(t1 = i,t2 = i+1, dt = 1/7, N = N, xprior.n = xprior[,j], Cn = Cns[,,j])
 		}
 		# update filter
-		var.obs <- apply(xpost,1,var)	# here will go inflation OEV
+		var.obs <- apply(xobs,1,var)*1.03	# here will go inflation OEV
 		var.prior <- apply(xprior,1,var)
 		xprior.mean <- apply(xprior,1,mean)
 		z <- c(numeric(2*ndist),distr.tseries[,i],numeric(nvar-3*ndist))	# new incidence data
@@ -109,32 +112,46 @@ EAKF <- function(distr.tseries, N1, N2, distr.dist, ntrn, nens, nfor, trn.init =
 		# eq. (4.5):
 		xpost <- (xpost.mean + sqrt(var.obs/den)) %*% t(rep(1,nens))*
 				(xprior-xprior.mean %*% t(rep(1,nens)))		# matrix (nvar, nens)
-		
+
 		xprior <- xpost
 
 		# update Cns array
 		for (j in 1:nens){
-			Cns[,,j] <- create.sl.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
-						 xprior[4*ndist+3, j],
-						 xprior[4*ndist+4, j],
-						 xprior[4*ndist+5, j])	# last 3 are tau1, tau2, ro
+			Cns[,,j] <- create.Cm(N1 = N1, N2 = N2, distr.dist = distr.dist, 
+						xprior[4*ndist+3, j],
+						xprior[4*ndist+4, j],
+						xprior[4*ndist+5, j])	# last 3 are tau1, tau2, ro
 		}
 	}
-	
 	#
 	# Part 3. - Forecast
 	#
+# 	
+# 	xfor <- array(0,c(nvar,nens,nfor+1))
+# 	xfor[,,1] <- xprior
+# 	n = 2
+# 	print('Forecasting:')
+# 	for (i in for.range){
+# 		print(i)
+# 		for (j in 1:nens){
+# 			xfor[,j,n] <- rk4(t1 = i, t2 = i+1, dt = 1/7, N = N, 
+# 					  xprior.n = xfor[,j,n-1], Cn = Cns[,,j])
+# 		}
+# 		n = n + 1
+# 	}
+# 	return(xfor)
 }
 
-rk4 <- function(t1, t2, dt, xprior.n, Cn){
+rk4 <- function(t1, t2, dt, N, xprior.n, Cn){
 	nvar <- length(xprior.n)
 	ndist <- dim(Cn)[1]
-	SEI <- xprior.n[1:3*ndist]
+	SEI <- xprior.n[1:(3*ndist)]
 	Z <- xprior.n[nvar-4]
 	D <- xprior.n[nvar-3]
 	beta <- xprior.n[1:ndist+3*ndist]/D
-	N.hat <- Cn %*% sl.N1[,1]
-	
+	N.hat <- Cn %*% N
+	print('###### SEI:')
+	print(SEI)
 	# propagate for one ensemble
 	xpost.n <- xprior.n
 	t.vec <- seq(t1, t2, by=dt)
@@ -146,7 +163,7 @@ rk4 <- function(t1, t2, dt, xprior.n, Cn){
 		SEI <- SEI + dt*(k1s + 2*k2s + 2*k3s + k4s)/6
 	}
 	
-	xpost.n[1:3*ndist] <- SEI
+	xpost.n[1:(3*ndist)] <- SEI
 	return(xpost.n)
 }
 
@@ -154,21 +171,33 @@ SEIRfunc <- function(SEI, N.hat, beta, alpha,  Z, D, Cn){
 	ndist <- length(SEI)/3
 	S <- SEI[1:ndist] 
 	E <- SEI[1:ndist+ndist] 
-	I <- SEI[1:ndist+2*ndist] 
-	
-	result <- numeric(3*ndist)
+	I <- SEI[1:ndist+2*ndist]
+
 	h1 <- S*sum(t(Cn) %*% beta*I/N.hat)		# I.hat := I
 	h2 <- E/Z
-	result[1:ndist] <- -h1 - alpha			# S
-	result[1:ndist+ndist] <- h1 - h2 + alpha	# E
-	result[1:ndist+2*ndist] <- h2 - I/D	# I
-	return(result)
+	SEI[1:ndist] <- -h1 - alpha			# S
+	SEI[1:ndist+ndist] <- h1 - h2 + alpha	# E
+	SEI[1:ndist+2*ndist] <- h2 - I/D	# I
+	SEI <- check.bounds(SEI.new = SEI, ndist = ndist, N.hat =  N.hat)
+	return(SEI)
 }
 
 camelCase <- function(x) {
-	# "I like pizza" to "I Like Pizza"
+	# "I like pizza" to "ILikePizza"
 	s <- tolower(x)
 	s <- strsplit(s, " ")[[1]]
 	paste(toupper(substring(s, 1,1)), substring(s, 2),
 	      sep="", collapse="")
+}
+
+check.bounds <- function(SEI.new, ndist, N.hat){
+	# posterior corrections for xnew (xnew is matrix)
+	N.hat3 <-
+	# SEI => 0, otherwise put 0 instead (non-negative populations)
+	SEI.new[SEI.new < 0] <- 0
+	
+	# SEI < N.hat, otherwise put N.hat instead (can not have in district more infected people than present)
+	SEI.new[SEI.new > rep(N.hat,3)] <- rep(N.hat,3)
+	
+	return(SEI.new)
 }

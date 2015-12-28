@@ -108,11 +108,13 @@ sl.pop.tot <- sum(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population)
 r.ave <- sqrt(sum(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Area)/pi)
 sl.N1 <- matrix(rep(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population,n), ncol = n)
 sl.N2 <- matrix(rep(sl.distr.inf[sl.distr.inf$Country == sl.name,]$Population,n), ncol = n, byrow = T)
+sl.N <- sl.N1[,1]
 sl.N1 <- sl.N1 / sl.pop.tot
 sl.N2 <- sl.N2 / sl.pop.tot
 
+
 # function for constructing connectivity matrix for certain tau1, tau2, ro
-create.sl.Cm <- function(N1, N2, distr.dist, tau1, tau2, ro){
+create.Cm <- function(N1, N2, distr.dist, tau1, tau2, ro){
 	Cm <- N1^tau1 * N2^tau2 / distr.dist^ro
 	Cm[is.infinite(Cm)] <- 0
 	Cm <- Cm %*% diag(1 / rowSums(Cm))
