@@ -1,4 +1,4 @@
-clearall = T
+clearall = F
 if (clearall) rm(list = ls(all.names = TRUE))
 echo = T
 #
@@ -46,7 +46,7 @@ sl.distr.inf <- sl.distr.inf[sl.distr.inf$Country == sl.name,]
 sl.distr.n <- dim(sl.distr.inf)[1]
 
 # Create distric tseries data
-sl.distr.tseries <- array(0,ncol = nweeks, nrow = sl.distr.n)
+sl.distr.tseries <- array(0, dim = c(sl.distr.n, nweeks) )
 i = 1
 for (distr in sl.distr.inf$District){
 	sl.distr.tseries[i,] <- sl[sl$Location == distr,]$Cases
@@ -118,6 +118,9 @@ create.Cm <- function(N1, N2, distr.dist, tau1, tau2, ro){
 	Cm <- N1^tau1 * N2^tau2 / distr.dist^ro
 	Cm[is.infinite(Cm)] <- 0
 	Cm <- Cm %*% diag(1 / rowSums(Cm))
+	if (any(is.na(Cm))){
+		stop('Creating Na Cn matrix !')
+	}
 	return(Cm)
 }
 

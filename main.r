@@ -1,4 +1,4 @@
-init = F
+init = T
 
 library('abind')
 library('truncnorm')
