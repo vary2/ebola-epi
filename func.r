@@ -1,5 +1,5 @@
 
-EAKF <- function(distr.tseries, N, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 24){
+SEIR.EAKF <- function(distr.tseries, N, N1, N2, distr.dist, ntrn, nens, nfor, trn.init = 24){
 	# Ensemble adjustment Kalman filter
 	# Parts of code:
 	#	1. -> initialize starting ensemble members
@@ -228,6 +228,29 @@ SEIRfunc <- function(SEI, N.hat, N, beta, alpha,  Z, D, Cn){
 	}
 	#SEI <- check.bounds.SEI(SEI, N)
 	return(SEI)
+}
+
+EAKF.update <- function(var.obs, xprior, H, z){
+	# EAKF update step
+	# Input:
+	#	var.obs	-> variance of observed data
+	#	xprior	-> prior states + parameters of the SEIR system
+	#	H	-> H, indices of observed states/parameters in the system (I data)
+	#	z	-> new weekly incidence (I data)
+	ones.nens <- rep(1,nens)
+	ones.nvar <- rep(1,nvar)
+	var.prior <- apply(xprior[H,],1,var)
+	xprior.mean <- apply(xprior[H,],1,mean)
+	
+	var.post <- var.prior*var.obs/(var.prior + var.obs)
+	xpost.mean <- var.post*(xprior.mean/var.prior + z/var.obs)
+	al <- sqrt(var.obs/(var.prior + var.obs))
+	dy <- xpost.mean %*% t(ones.nens) 
+			+ al*(xprior[H,] - xprior.mean %*% t(ones.nens) )
+			- xprior[H,]
+	obs.all.cov <- cov(xprior ,xprior[H,])/(var.prior %*% t(ones.nvar) ) # skontroluj dimenziu !
+	xnew <- xprior + obs.all.cov %*% dy
+	return(xnew)
 }
 
 camelCase <- function(x) {
